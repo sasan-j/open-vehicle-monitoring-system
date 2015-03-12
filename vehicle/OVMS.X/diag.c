@@ -231,11 +231,11 @@ void diag_handle_diag(char *command, char *arguments)
   net_puts_ram(net_scratchpad);
   #endif // #ifdef OVMS_HW_V2
 
-  #ifdef OVMS_LOGGINGMODULE
-  s = stp_i(net_scratchpad, "#  LOGGING:  ", log_state);
-  s = stp_rom(s, "\r\n");
-  net_puts_ram(net_scratchpad);
-  #endif
+ #ifdef OVMS_LOGGINGMODULE
+ s = stp_i(net_scratchpad, "#  LOGGING:  ", log_state);
+ s = stp_rom(s, "\r\n");
+ net_puts_ram(net_scratchpad);
+ #endif
 
   #ifdef OVMS_ACCMODULE
   s = stp_i(net_scratchpad, "#  ACC:      ", acc_state);

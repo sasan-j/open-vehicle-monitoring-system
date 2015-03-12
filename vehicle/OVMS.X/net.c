@@ -1499,14 +1499,14 @@ void net_state_ticker60(void)
         return;
         }
 #ifdef OVMS_LOGGINGMODULE
-      if ((net_link==1)&&(logging_haspending() > 0))
-        {
-        delay100(10);
-        net_msg_start();
-        logging_sendpending();
-        net_msg_send();
-        return;
-        }
+     if ((net_link==1)&&(logging_haspending() > 0))
+       {
+       delay100(10);
+       net_msg_start();
+       logging_sendpending();
+       net_msg_send();
+       return;
+       }
 #endif // #ifdef OVMS_LOGGINGMODULE
       if ((net_link==1)&&(net_apps_connected>0))
         {

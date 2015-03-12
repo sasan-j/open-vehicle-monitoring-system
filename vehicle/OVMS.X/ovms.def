@@ -39,7 +39,7 @@
 // to support other car types as well, with the first being the Volt/Ampera.
 // So, we now have switches to control which car type is to be built. Only
 // one of the following should be defined.
-//#define OVMS_CAR_NONE
+// #define OVMS_CAR_NONE
 //#define OVMS_CAR_TESLAROADSTER
 //#define OVMS_CAR_VOLTAMPERA
 //#define OVMS_CAR_RENAULTTWIZY
@@ -48,6 +48,7 @@
 //#define OVMS_CAR_NISSANLEAF
 //#define OVMS_CAR_TAZZARI
 //#define OVMS_CAR_MITSUBISHI
+
 //#define OVMS_CAR_TRACK
 //#define OVMS_CAR_KYBURZ
 

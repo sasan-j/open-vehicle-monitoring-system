@@ -39,3 +39,10 @@ CND_ARTIFACT_PATH_V2_RT_Production=dist/V2_RT_Production/production/OVMS.X.produ
 CND_PACKAGE_DIR_V2_RT_Production=${CND_DISTDIR}/V2_RT_Production/package
 CND_PACKAGE_NAME_V2_RT_Production=ovms.x.tar
 CND_PACKAGE_PATH_V2_RT_Production=${CND_DISTDIR}/V2_RT_Production/package/ovms.x.tar
+# V2_RT_Remote configuration
+CND_ARTIFACT_DIR_V2_RT_Remote=dist/V2_RT_Remote/production
+CND_ARTIFACT_NAME_V2_RT_Remote=OVMS.X.production.hex
+CND_ARTIFACT_PATH_V2_RT_Remote=dist/V2_RT_Remote/production/OVMS.X.production.hex
+CND_PACKAGE_DIR_V2_RT_Remote=${CND_DISTDIR}/V2_RT_Remote/package
+CND_PACKAGE_NAME_V2_RT_Remote=ovms.x.tar
+CND_PACKAGE_PATH_V2_RT_Remote=${CND_DISTDIR}/V2_RT_Remote/package/ovms.x.tar

@@ -6,17 +6,22 @@ use Crypt::RC4::XS;
 use MIME::Base64;
 use IO::Socket::INET;
 
+#Parameter initializations
+my $server_ip = '127.0.0.1';
+my $server_port = '6867';
+my $vehicle_id = 'YOUR CAR ID';
+my $shared_secret = "YOUR PASSWORD";
+
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-my $shared_secret = "NETPASS";
 print STDERR "Shared Secret is: ",$shared_secret,"\n";
 
 #####
 ##### CONNECT
 #####
 
-my $sock = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
-                                 PeerPort => '6867',
+my $sock = IO::Socket::INET->new(PeerAddr => $server_ip,
+                                 PeerPort => $server_port,
                                  Proto    => 'tcp');
 
 #####
@@ -36,7 +41,7 @@ $client_hmac->add($client_token);
 my $client_digest = $client_hmac->b64digest();
 print STDERR "  Client digest is $client_digest\n";
 
-print $sock "MP-C 0 $client_token $client_digest TESTCAR\r\n";
+print $sock "MP-C 0 $client_token $client_digest $vehicle_id\r\n";
 
 my $line = <$sock>;
 chop $line;

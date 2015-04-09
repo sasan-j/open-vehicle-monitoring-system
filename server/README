@@ -18,3 +18,11 @@ file suitably configured, the ovms_server.sql database tables in a mysql databas
 the *.vece files (to convert error code to messages for different vehicle types).
 
 The other scripts are purely for development and testing purposes.
+
+perl-dep-modules.txt contains list of the prerequisite perl modules
+best approach would be using cpanm or cpanminus like this:
+$sudo cpanm < perl-dep-modules.txt
+
+ovms.conf is a very simple upstart conf file which should work well on ubuntu servers, to use just copy ovms.conf to /etc/init/ovms.conf
+Then you can start the server using:
+$sudo service ovms start

@@ -7,10 +7,10 @@ use MIME::Base64;
 use IO::Socket::INET;
 
 #Parameter initializations
-my $server_ip = '127.0.0.1';
+my $server_ip = 'dev.luxtraffic.lu';
 my $server_port = '6867';
-my $vehicle_id = 'YOUR CAR ID';
-my $shared_secret = "YOUR PASSWORD";
+my $vehicle_id = 'SNT_TWIZY_L';
+my $shared_secret = "vlabTwizy";
 
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

@@ -280,6 +280,7 @@
 #define CMD_Config		102 // (various settings)
 //#define CMD_SetRemote		104 // (enable|disable)
 #define CMD_QueryState		103 // ()
+#define CMD_Ping                105
 
 #endif // TWIZY_REMOTE
 
@@ -775,6 +776,7 @@ BOOL vehicle_twizy_battstatus_sms(BOOL premsg, char *caller, char *command, char
 
 UINT vehicle_twizy_control_agent(void);
 BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments);
+BOOL vehicle_twizy_ping_cmd(BOOL msgmode, int cmd, char *arguments);
 BOOL vehicle_twizy_config_cmd(BOOL msgmode, int cmd, char *arguments);
 void write_gear(UINT8 gear);
 void write_throttle(UINT throttle_factor);
@@ -7409,6 +7411,19 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   return TRUE;
 }
 
+// Parsing and use of message from app, ack
+BOOL vehicle_twizy_ping_cmd(BOOL msgmode, int cmd, char *arguments)
+{
+  if (msgmode)
+  {
+    stp_rom(net_scratchpad, "MP-0 c105,0");
+    net_msg_encode_puts();
+    net_msg_send();
+  }
+  return TRUE;
+}
+
+
 BOOL vehicle_twizy_config_cmd(BOOL msgmode, int cmd, char *arguments)
 {
   char *s;
@@ -7514,6 +7529,9 @@ BOOL vehicle_twizy_fn_commandhandler(BOOL msgmode, int cmd, char *msg)
 
   case CMD_QueryState:
     return FALSE;
+
+  case CMD_Ping:
+    return vehicle_twizy_ping_cmd(msgmode, cmd, msg);
 
 #endif // TWIZY_REMOTE
 

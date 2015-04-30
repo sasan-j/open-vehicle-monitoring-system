@@ -287,19 +287,31 @@
 
 
 //Some readable constants
-#define SPOOKY_THROTTLE 10
+#define SPOOKY_THROTTLE             10
+#define FORCED_BRAKE_THROTTLE       10
+#define SPOOKY_INTERVAL             5
 
-#define MOTOR_DIR_STOPPED 0
-#define MOTOR_DIR_FORWARD 1
-#define MOTOR_DIR_BACKWARD 2
 
-#define GEAR_STATE_NEUTRAL 0
-#define GEAR_STATE_FORWARD 1
-#define GEAR_STATE_REVERSE 2
+//Scenario defs
+#define SPOOKY_SCENARIO             1
 
-#define BRAKE_STATE_NO 0
-#define BRAKE_STATE_NORMAL 1
-#define BRAKE_STATE_EMERGENCY 2
+#define MOTOR_DIR_STOPPED           0
+#define MOTOR_DIR_FORWARD           1
+#define MOTOR_DIR_BACKWARD          2
+
+#define GEAR_STATE_NEUTRAL          0
+#define GEAR_STATE_FORWARD          1
+#define GEAR_STATE_REVERSE          2
+
+#define BRAKE_STATE_NO              0
+#define BRAKE_STATE_NORMAL          1
+#define BRAKE_STATE_EMERGENCY       2
+
+#define BRAKE_MODE_NATURAL          0
+#define BRAKE_MODE_FORCED           1
+
+#define AUTO_RST_INACTIVE_ENABLE    1
+#define AUTO_RST_INACTIVE_DISABLE   0
 
 #endif // TWIZY_REMOTE
 
@@ -506,7 +518,7 @@ UINT twizy_autorecup_level;         // autorecup: current recup level (per mille
 UINT8 control_throttle1;	// Intensity of forward acceleration
 UINT8 control_throttle2;	// Intensity of backward acceleration
 UINT8 control_brake_en;		// 1:enable = Emergency braking until car is still
-UINT8 control_brake_rst;	// 1:reset = Disable emergency braking
+//UINT8 control_brake_rst;	// 1:reset = Disable emergency braking
 UINT8 control_remote_on;	// control agent status
 UINT8 control_elapsed_time;
 
@@ -522,6 +534,7 @@ UINT8 state_gear;		// 0:neutral 1:forward 2:reverse
 UINT8 state_recycled;		// 0:no 1:yes
 
 UINT8 motor_direction;		// 0:stopped 1:going forward 2:going backward
+//TODO: Change to signed int to avoide crazy conversions
 UINT32 motor_speed;
 
 UINT8 tick_divider;
@@ -531,6 +544,10 @@ UINT8 prev_gear;
 
 UINT32 MAX_THRESHOLD;
 UINT32 MID_THRESHOLD;
+
+UINT8 spooky_prev_dir;
+UINT8 spooky_duration;
+BOOL spooky_is_moving;
 
 #pragma udata overlay vehicle_overlay_data
 
@@ -7134,15 +7151,12 @@ UINT vehicle_twizy_control_agent(void)
   //TODO: Do something like resetting all the manipulation so car easily can be controller by the driver
   if (control_elapsed_time >= config_timeout /*no update received for T seconds AND not doing emergency braking*/)
   {
-#ifdef RT_REMOTE_EMERGENCY
-    state_braking = BRAKE_STATE_EMERGENCY;		// enable emergency braking
-#else
-    state_braking = BRAKE_STATE_NORMAL;                 // enable normal braking
-#endif
+
+    state_braking = (config_braking_mode==BRAKE_MODE_NATURAL) ? BRAKE_STATE_NORMAL : BRAKE_STATE_EMERGENCY;// enable configured braking mode
   }
   else
   {
-    control_elapsed_time += REMOTE_AGENT_10TH; // add three 10th of a second for each turn
+    control_elapsed_time += REMOTE_AGENT_10TH; // add REMOTE_AGENT_10TH 10th of a second for each turn
   }
   
   //-----------------
@@ -7168,7 +7182,7 @@ UINT vehicle_twizy_control_agent(void)
   // SPOOOOOKY AGENT
   //-----------------
   
-  if (config_scenario == 1)
+  if (config_scenario == SPOOKY_SCENARIO)
   {
     vehicle_twizy_spooky_agent();
     return 0; 					// skip the rest of the agent function
@@ -7188,37 +7202,35 @@ UINT vehicle_twizy_control_agent(void)
   // THROTTLE CONTROL
   //-----------------
   
-  if (state_braking == BRAKE_STATE_NORMAL || state_braking == BRAKE_STATE_EMERGENCY) /*if emergency braking enabled OR braking enabled*/
+  if (state_braking == BRAKE_STATE_EMERGENCY) /*if emergency braking enabled*/
   {
-#ifdef RT_REMOTE_EMERGENCY
-    // throttle input (2910.4/6) : 0-32767 = 320 * X (0-100)
-    if (motor_direction == MOTOR_DIR_FORWARD)			/*if forward read*/
-    {
-      // apply default (~100 %) or specified negative torque
-      write_throttle((state_braking == BRAKE_STATE_EMERGENCY) ? 50 : control_throttle2);
-      write_gear(GEAR_STATE_REVERSE);				// set reverse gear switch
-    }
-    else if (motor_direction == MOTOR_DIR_BACKWARD)		/*if backward read*/
-    {
-      // apply default or specified positive torque
-      write_throttle((state_braking == BRAKE_STATE_EMERGENCY) ? 50 : control_throttle1);
-      write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
-    }
-#else
-      // throttle input (2910.4/6) : 0-32767 = 320 * X (0-100)
-    if (motor_direction == MOTOR_DIR_FORWARD)			/*if forward read*/
-    {
-      // apply default (~100 %) or specified negative torque
-      write_throttle(0);
-      //write_gear(GEAR_STATE_REVERSE);				// set reverse gear switch
-    }
-    else if (motor_direction == MOTOR_DIR_BACKWARD)		/*if backward read*/
-    {
-      // apply default or specified positive torque
-      write_throttle(0);
-      //write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
-    }
-#endif
+        // throttle input (2910.4/6) : 0-32767 = 320 * X (0-100)
+        if (motor_direction == MOTOR_DIR_FORWARD)			/*if forward read*/
+        {
+          // apply default (~100 %) or specified negative torque
+          write_throttle(FORCED_BRAKE_THROTTLE);
+          write_gear(GEAR_STATE_REVERSE);				// set reverse gear switch
+        }
+        else if (motor_direction == MOTOR_DIR_BACKWARD)		/*if backward read*/
+        {
+          // apply default or specified positive torque
+          write_throttle(FORCED_BRAKE_THROTTLE);
+          write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
+        }
+  } else if(state_braking == BRAKE_STATE_NORMAL){/* if natural braking enabled*/
+          // throttle input (2910.4/6) : 0-32767 = 320 * X (0-100)
+        if (motor_direction == MOTOR_DIR_FORWARD)			/*if forward read*/
+        {
+          // apply default (~100 %) or specified negative torque
+          write_throttle(0);
+          //write_gear(GEAR_STATE_REVERSE);				// set reverse gear switch
+        }
+        else if (motor_direction == MOTOR_DIR_BACKWARD)		/*if backward read*/
+        {
+          // apply default or specified positive torque
+          write_throttle(0);
+          //write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
+        }
   }
   else // if we are not braking
   {
@@ -7247,6 +7259,31 @@ UINT vehicle_twizy_control_agent(void)
 // By-pass of the normal control agent to do a spooky action : move alternatively forward and in reverse
 void vehicle_twizy_spooky_agent(void)
 {
+  //Spooky non reliable time measurement
+  spooky_duration = ++spooky_duration % SPOOKY_INTERVAL;
+  if(spooky_duration == 0){
+      if(spooky_is_moving){
+        //Stop
+          write_throttle(0);
+          spooky_is_moving = FALSE;
+      } else {
+        //Start moving in opposite direction
+
+        //We were moving forward so now we should go backward
+        if(spooky_prev_dir == MOTOR_DIR_FORWARD){
+            write_throttle(SPOOKY_THROTTLE);
+            write_gear(GEAR_STATE_REVERSE); // go in reverse
+            spooky_prev_dir = MOTOR_DIR_BACKWARD;
+        } else {
+        //We were moving backward so now we should go forward
+            write_throttle(SPOOKY_THROTTLE);
+            write_gear(GEAR_STATE_FORWARD);
+            spooky_prev_dir = MOTOR_DIR_FORWARD;
+        }
+      }
+  }
+  //TODO: add a direction control var to spooky
+  /*
   if (motor_speed > 100 && motor_speed < MID_THRESHOLD) // 100 rpm
   {
     write_throttle(SPOOKY_THROTTLE);
@@ -7257,6 +7294,8 @@ void vehicle_twizy_spooky_agent(void)
     write_throttle(SPOOKY_THROTTLE);
     write_gear(GEAR_STATE_FORWARD); // go forward
   }
+  */
+
 }
 
 // Parsing and use of message from app, ack
@@ -7274,39 +7313,46 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   {
     
     // Control
-    
+
+    //Throttle1 is used as forward Throttle
     if (arguments = strtokpgmram(arguments, ","))
       control_throttle1 = atoi(arguments);
 
+    //Throttle2 is used as reverse Throttle
     if (arguments = strtokpgmram(NULL, ","))
       control_throttle2 = atoi(arguments);
 
+    //Brake Enable
     if (arguments = strtokpgmram(NULL, ","))
       control_brake_en = atoi(arguments);
 
-    if (arguments = strtokpgmram(NULL, ","))
-      control_brake_rst = atoi(arguments);
-    
+    //Sequence number
     if (arguments = strtokpgmram(NULL, ","))
       seq_number = atoi(arguments);
     
     // Config
-    
+
+    //Brake mode
     if (arguments = strtokpgmram(NULL, ","))
       config_braking_mode = atoi(arguments);
-    
+
+    //Remote Enable
     if (arguments = strtokpgmram(NULL, ","))
       control_remote_on = atoi(arguments);
-    
+
+    //Speed limit
     if (arguments = strtokpgmram(NULL, ","))
       config_speedlimit = atoi(arguments);
-    
+
+    //Speed limit enable
     if (arguments = strtokpgmram(NULL, ","))
       config_speedlimit_en = atoi(arguments);
-    
+
+    //Timeout time
     if (arguments = strtokpgmram(NULL, ","))
       config_timeout = atoi(arguments);
-    
+
+    //Scenario
     if (arguments = strtokpgmram(NULL, ","))
       new_scenario = atoi(arguments);
   }
@@ -7322,24 +7368,23 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
     switch(new_scenario)
     {
       case 0:
-#ifdef RT_REMOTE_EMERGENCY
-        // do an emergency braking
-	state_braking = BRAKE_STATE_EMERGENCY;
-#else
-        state_braking = BRAKE_STATE_NORMAL;
-#endif
+        // no scenario
 	break;
-      case 1: // jump start the spooky action with a forward gear
-	write_throttle(SPOOKY_THROTTLE);
+      case SPOOKY_SCENARIO: // jump start the spooky action with a forward gear
+        spooky_prev_dir = GEAR_STATE_REVERSE;
+        spooky_duration = 0;
+        /*
+        write_throttle(SPOOKY_THROTTLE);
 	write_gear(GEAR_STATE_FORWARD);
+         */
 	state_braking = BRAKE_STATE_NO;
 	break;
-      default: // go back to default scenario and brake
-#ifdef RT_REMOTE_EMERGENCY
+      case 5:
+        // do an emergency braking
 	state_braking = BRAKE_STATE_EMERGENCY;
-#else
+	break;
+      default: // go back to default scenario and brake
         state_braking = BRAKE_STATE_NORMAL;
-#endif
 	config_scenario = 0;
 	break;
     }
@@ -7372,24 +7417,19 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   //-----------------
   // RESET BRAKING
   //-----------------
-#ifdef RT_REMOTE_EMERGENCY
+  /*
   if (control_brake_rst && state_braking == BRAKE_STATE_EMERGENCY) // Reset signal received from app
-#else
-  if (control_brake_rst && state_braking == BRAKE_STATE_NORMAL) // Reset signal received from app
-#endif
   {
     state_braking = BRAKE_STATE_NO;
   }
+  */
   
   //-----------------
   // GEAR/BRK CHANGE
   //-----------------
-#ifdef RT_REMOTE_EMERGENCY
-  if (state_braking == BRAKE_STATE_EMERGENCY || (control_brake_en && !control_brake_rst)
-#else
-  if (state_braking == BRAKE_STATE_NORMAL || (control_brake_en && !control_brake_rst)
-#endif
-    || (config_braking_mode == 1 && control_throttle1 == 0 && control_throttle2 == 0 && motor_direction != MOTOR_DIR_STOPPED)
+
+  if (control_brake_en
+        || (control_throttle1 == 0 && control_throttle2 == 0 && motor_direction != MOTOR_DIR_STOPPED)
   )
     /* emergency braking flag
      * OR emergency brake cmd received
@@ -7398,19 +7438,15 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
      * (OR timestamp expiration)
      */
   {
-#ifdef RT_REMOTE_EMERGENCY
-    state_braking = BRAKE_STATE_EMERGENCY;	// enable emergency braking
-#else
-    state_braking = BRAKE_STATE_NORMAL;
-#endif
-    state_gear = GEAR_STATE_NEUTRAL;	// set neutral gear by default
+    state_braking = (config_braking_mode==BRAKE_MODE_NATURAL) ? BRAKE_STATE_NORMAL : BRAKE_STATE_EMERGENCY;
+    //state_gear = GEAR_STATE_NEUTRAL;	// set neutral gear by default
   }
   else if ((motor_direction == MOTOR_DIR_FORWARD && control_throttle1 == 0 && control_throttle2 > 0)
     || (motor_direction == MOTOR_DIR_BACKWARD && control_throttle1 > 0 && control_throttle2 == 0))
     /*(forward read AND reverse throttle)
      * OR (reverse read AND forward throttle)*/
   {
-    state_braking = BRAKE_STATE_NORMAL;	// enable braking with specified torque %
+    state_braking = (config_braking_mode==BRAKE_MODE_NATURAL) ? BRAKE_STATE_NORMAL : BRAKE_STATE_EMERGENCY;	// enable braking with specified torque %
   }
   else if (control_throttle1 == 0 && control_throttle2 > 0
     && (motor_direction == MOTOR_DIR_BACKWARD || motor_direction == MOTOR_DIR_STOPPED))
@@ -7899,17 +7935,17 @@ BOOL vehicle_twizy_initialise(void)
     control_throttle1 = 0;	// Intensity of forward acceleration
     control_throttle2 = 0;	// Intensity of backward acceleration
     control_brake_en = 0;	// 1:enable = Emergency braking until car is still
-    control_brake_rst = 0;	// 1:reset = Disable emergency braking
     control_remote_on = 0;	// control agent status
     control_elapsed_time = 0;
-    
-    config_braking_mode = 0;	// 0:auto 1:manual = Autobrake after inactivity period
+    // 0 natural 1 forced
+    config_braking_mode = BRAKE_MODE_NATURAL;	// 0:natural 1:forced
     config_speedlimit = 0;	// Maximum authorized speed
     config_speedlimit_en = 0;	// 0:no 1:yes = Speed limit enabled
     config_on = 0;		// 1:agent enabled 2:agent disabled
     config_timeout = 50;	// 50 * 100 ms = 5s
     config_scenario = 0;
-    
+
+    // No brake 0, Natural brake 1, Forced brake 2
     state_braking = BRAKE_STATE_NO;		// 0:no 1:normal 2:emergency
     state_gear = GEAR_STATE_NEUTRAL;		// 0:neutral 1:forward 2:reverse
     state_recycled = 0;
@@ -7917,6 +7953,11 @@ BOOL vehicle_twizy_initialise(void)
     motor_direction = MOTOR_DIR_STOPPED;	// 0:stopped 1:going forward 2:going backward
     motor_speed = 0;
     
+    //Initializing spooky variables
+    spooky_prev_dir = MOTOR_DIR_BACKWARD; /*This var is used to know the last direction*/
+    spooky_duration = 0; /* This var is used for timing purposes */
+    spooky_is_moving = FALSE;
+
     tick_divider = 0;
     prev_throttle = 255; 	// normal range is 0-100
     prev_max_speed = 255;	// 0-80

@@ -7379,11 +7379,10 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
          */
 	state_braking = BRAKE_STATE_NO;
 	break;
-      case 5:
-        // do an emergency braking
-	state_braking = BRAKE_STATE_EMERGENCY;
-	break;
       default: // go back to default scenario and brake
+#ifdef RT_REMOTE_EMERGENCY
+	state_braking = BRAKE_STATE_EMERGENCY;
+#else
         state_braking = BRAKE_STATE_NORMAL;
 	config_scenario = 0;
 	break;

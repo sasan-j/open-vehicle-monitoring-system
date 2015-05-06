@@ -289,11 +289,13 @@
 //Some readable constants
 #define SPOOKY_THROTTLE             10
 #define FORCED_BRAKE_THROTTLE       10
-#define SPOOKY_INTERVAL             5
+#define SPOOKY_INTERVAL             10  //means spooky stops, then moves forward or backward for
+                                       //8 * REMOTE_AGENT_10TH * 1/10 of second e.g. 1.0
 
 
 //Scenario defs
-#define SPOOKY_SCENARIO             1
+#define SCENARIO_NONE               0
+#define SCENARIO_SPOOKY             1
 
 #define MOTOR_DIR_STOPPED           0
 #define MOTOR_DIR_FORWARD           1
@@ -819,6 +821,7 @@ void write_throttle(UINT throttle_factor);
 void write_max_speed(UINT8 max_speed);
 void reset_max_speed();
 void vehicle_twizy_spooky_agent(void);
+void reset_twizy_remote(void);
 
 #endif // TWIZY_REMOTE
 
@@ -7153,6 +7156,7 @@ UINT vehicle_twizy_control_agent(void)
   {
 
     state_braking = (config_braking_mode==BRAKE_MODE_NATURAL) ? BRAKE_STATE_NORMAL : BRAKE_STATE_EMERGENCY;// enable configured braking mode
+    reset_twizy_remote();
   }
   else
   {
@@ -7182,7 +7186,7 @@ UINT vehicle_twizy_control_agent(void)
   // SPOOOOOKY AGENT
   //-----------------
   
-  if (config_scenario == SPOOKY_SCENARIO)
+  if (config_scenario == SCENARIO_SPOOKY)
   {
     vehicle_twizy_spooky_agent();
     return 0; 					// skip the rest of the agent function
@@ -7266,21 +7270,24 @@ void vehicle_twizy_spooky_agent(void)
         //Stop
           write_throttle(0);
           spooky_is_moving = FALSE;
-      } else {
-        //Start moving in opposite direction
-
-        //We were moving forward so now we should go backward
-        if(spooky_prev_dir == MOTOR_DIR_FORWARD){
-            write_throttle(SPOOKY_THROTTLE);
-            write_gear(GEAR_STATE_REVERSE); // go in reverse
-            spooky_prev_dir = MOTOR_DIR_BACKWARD;
-        } else {
-        //We were moving backward so now we should go forward
-            write_throttle(SPOOKY_THROTTLE);
-            write_gear(GEAR_STATE_FORWARD);
-            spooky_prev_dir = MOTOR_DIR_FORWARD;
-        }
       }
+  }
+
+    //Start moving in opposite direction
+  if(!spooky_is_moving && motor_direction == MOTOR_DIR_STOPPED){
+    //We were moving forward so now we should go backward
+    if(spooky_prev_dir == MOTOR_DIR_FORWARD){
+        write_gear(GEAR_STATE_REVERSE); // go in reverse
+        write_throttle(SPOOKY_THROTTLE);
+        spooky_prev_dir = MOTOR_DIR_BACKWARD;
+    } else {
+    //We were moving backward so now we should go forward
+        write_gear(GEAR_STATE_FORWARD);
+        write_throttle(SPOOKY_THROTTLE);
+        spooky_prev_dir = MOTOR_DIR_FORWARD;
+    }
+    spooky_duration = 0;
+    spooky_is_moving = TRUE;
   }
   //TODO: add a direction control var to spooky
   /*
@@ -7367,12 +7374,13 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
     
     switch(new_scenario)
     {
-      case 0:
+      case SCENARIO_NONE:
         // no scenario
 	break;
-      case SPOOKY_SCENARIO: // jump start the spooky action with a forward gear
+      case SCENARIO_SPOOKY: // jump start the spooky action with a forward gear
         spooky_prev_dir = GEAR_STATE_REVERSE;
-        spooky_duration = 0;
+        spooky_duration = SPOOKY_INTERVAL-1;
+        spooky_is_moving = FALSE;
         /*
         write_throttle(SPOOKY_THROTTLE);
 	write_gear(GEAR_STATE_FORWARD);
@@ -7380,11 +7388,8 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
 	state_braking = BRAKE_STATE_NO;
 	break;
       default: // go back to default scenario and brake
-#ifdef RT_REMOTE_EMERGENCY
-	state_braking = BRAKE_STATE_EMERGENCY;
-#else
         state_braking = BRAKE_STATE_NORMAL;
-	config_scenario = 0;
+	config_scenario = SCENARIO_NONE;
 	break;
     }
   }
@@ -7478,17 +7483,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   
   if (!control_remote_on && config_on)	// disable remote agent
   {
-    config_on = 0;
-    writesdo(0x2121,0x00,0);		// neutral gear
-    writesdo(0x2122,0x00,0);
-    writesdo(0x2910,0x04,0x8001);	// normal start value for throttle conversion
-    writesdo(0x2910,0x06,0x7fff);	// normal end value for throttle conversion
-    writesdo(0x3814,0x14,6534);		// re-enable stuck pedal check
-    reset_max_speed();
-    prev_throttle = 255;
-    prev_max_speed = 255;
-    prev_gear = 3;
-    config_scenario = 0;
+      reset_twizy_remote();
   }
   
   if (config_speedlimit_en)
@@ -7528,6 +7523,19 @@ BOOL vehicle_twizy_ping_cmd(BOOL msgmode, int cmd, char *arguments)
   return TRUE;
 }
 
+void reset_twizy_remote(){
+    config_on = 0;
+    writesdo(0x2121,0x00,0);		// neutral gear
+    writesdo(0x2122,0x00,0);
+    writesdo(0x2910,0x04,0x8001);	// normal start value for throttle conversion
+    writesdo(0x2910,0x06,0x7fff);	// normal end value for throttle conversion
+    writesdo(0x3814,0x14,6534);		// re-enable stuck pedal check
+    reset_max_speed();
+    prev_throttle = 255;
+    prev_max_speed = 255;
+    prev_gear = 3;
+    config_scenario = SCENARIO_NONE;
+}
 
 BOOL vehicle_twizy_config_cmd(BOOL msgmode, int cmd, char *arguments)
 {

@@ -204,6 +204,7 @@ void main(void)
 
   // Startup sequence...
   // Holding the RED led on, pulse out the firmware version on the GREEN led
+#ifndef TWIZY_REMOTE
   delay100(10); // Delay 1 second
   led_set(OVMS_LED_RED, OVMS_LED_ON);
   led_set(OVMS_LED_GRN, OVMS_LED_OFF);
@@ -226,6 +227,7 @@ void main(void)
   led_start();
   delay100(10); // Delay 1 second
   ClrWdt(); // Clear Watchdog Timer
+#endif
 
   // Setup ready for the main loop
   led_set(OVMS_LED_GRN, OVMS_LED_OFF);

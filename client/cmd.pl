@@ -86,7 +86,7 @@ if ($cmd_args)
 else
  { $cmd = $cmd_code; }
 
-my $encrypted = encode_base64($txcipher->RC4("MP-0 C".$cmd),'');
+my $encrypted = encode_base64($txcipher->RC4("MP-0 ".$cmd),'');
 print $sock "$encrypted\r\n";
 
 
@@ -134,7 +134,15 @@ while(1)
 		# reformat as std msg:
 		$decoded = "MP-0 ".$code.$decoded;
 	}
-	
+	if ($decoded =~ /^MP-0 c105,(.)/)
+	{
+		print STDOUT $decoded, "\n";
+		$discardcnt = 0;
+	}
+	if ($decoded =~ /^MP-0 c(.*)/){
+	    print STDOUT $decoded, "\n";
+	    $discardcnt = 0;
+	}
 	if ($decoded =~ /^MP-0 c$cmd_code/)
 	{
 		print STDOUT $decoded,"\n";

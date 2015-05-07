@@ -8,6 +8,7 @@ use IO::Socket::INET;
 
 #Parameter initializations
 my $server_ip = 'dev.luxtraffic.lu';
+#my $server_ip = '127.0.0.1';
 my $server_port = '6867';
 my $vehicle_id = 'SNT_TWIZY_L';
 my $shared_secret = "vlabTwizy";
@@ -106,4 +107,16 @@ while(<$sock>)
     print STDERR "  Sending message $encrypted\n";
     print $sock "$encrypted\r\n";
     }
+  if($line =~ /^MP-0 C105/)
+  {
+    $encrypted = encode_base64($txcipher->RC4("MP-0 c105,0"),'');
+    print STDERR "  Sending message $encrypted\n";
+    print $sock "$encrypted\r\n";
   }
+  if($line =~ /^MP-0 C101/)
+  {
+    $encrypted = encode_base64($txcipher->RC4("MP-0 c101,1,2,3,4,5"),'');
+    print STDERR "  Sending message $encrypted\n";
+    print $sock "$encrypted\r\n";
+  } 
+}

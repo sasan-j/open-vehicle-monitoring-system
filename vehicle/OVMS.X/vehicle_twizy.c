@@ -289,7 +289,7 @@
 //Some readable constants
 #define SPOOKY_THROTTLE             10
 #define FORCED_BRAKE_THROTTLE       10
-#define SPOOKY_INTERVAL             10  //means spooky stops, then moves forward or backward for
+#define SPOOKY_INTERVAL             20  //means spooky stops, then moves forward or backward for
                                        //8 * REMOTE_AGENT_10TH * 1/10 of second e.g. 1.0
 
 
@@ -300,6 +300,11 @@
 #define MOTOR_DIR_STOPPED           0
 #define MOTOR_DIR_FORWARD           1
 #define MOTOR_DIR_BACKWARD          2
+
+#define SPEED_THRESHOLD_POS         5
+#define SPEED_THRESHOLD_NEG         -5
+
+#define SAFETY_THROTTLE_COEF        0.2
 
 #define GEAR_STATE_NEUTRAL          0
 #define GEAR_STATE_FORWARD          1
@@ -537,7 +542,7 @@ UINT8 state_recycled;		// 0:no 1:yes
 
 UINT8 motor_direction;		// 0:stopped 1:going forward 2:going backward
 //TODO: Change to signed int to avoide crazy conversions
-UINT32 motor_speed;
+INT32 motor_speed;
 
 UINT8 tick_divider;
 UINT8 prev_throttle;
@@ -5000,7 +5005,6 @@ BOOL vehicle_twizy_state_ticker1(void)
 
 #endif // OVMS_TWIZY_CFG
 
-
   return FALSE;
 }
 
@@ -7076,9 +7080,17 @@ void write_throttle(UINT throttle_factor)
 {
   if (prev_throttle != throttle_factor && throttle_factor >= 0 && throttle_factor <=100)
   {
+    //Here prev_throttle is used as a temp variable
+    if(throttle_factor > 25){
+        prev_throttle = throttle_factor  * SAFETY_THROTTLE_COEF;
+    } else {
+        prev_throttle = throttle_factor;
+    }
+
+    writesdo(0x2910,0x04,prev_throttle * 320);	// start throttle value
+    writesdo(0x2910,0x06,prev_throttle * 320);	// end throttle value
+
     prev_throttle = throttle_factor;
-    writesdo(0x2910,0x04,throttle_factor * 320);	// start throttle value
-    writesdo(0x2910,0x06,throttle_factor * 320);	// end throttle value
   }
 }
 
@@ -7118,13 +7130,18 @@ UINT vehicle_twizy_control_agent(void)
 
   // if driver has pressed footbrake set throttle to 0
   // This acts as a safety measure to stop the car from forcing itself into a wall while user tells it to stop!
-  /* DOESN'T WORK YET
-  if (readsdo(0x2130,0x00) == 0)	// if driver has pressed footbrake set throttle to 0
+  /* DOESN'T WORK YET */
+  if ((twizy_status & CAN_STATUS_GO) && readsdo(0x2130,0x00) == 0)	// if driver has pressed footbrake set throttle to 0
   {
-    write_throttle(0);
-    return 0;
+    //write_throttle(0);
+    if(twizy_sdo.data == 0){
+        state_braking = BRAKE_STATE_NORMAL;
+        write_throttle(0);
+        return 0;
+    }
   }
-  */
+
+  
 
 
   if (!(twizy_status & CAN_STATUS_GO) || !config_on)	// only proceed if car is in GO mode and remote is activated
@@ -7168,15 +7185,15 @@ UINT vehicle_twizy_control_agent(void)
   //-----------------
   
   /*if forward motion detected [+100;+inf]*/
-  if ( motor_speed > 100 && motor_speed < MID_THRESHOLD)
+  if ( motor_speed > SPEED_THRESHOLD_POS)
   {
     motor_direction = MOTOR_DIR_FORWARD;			// set forward read
   } 
-  else if ( motor_speed >= MID_THRESHOLD && motor_speed < MAX_THRESHOLD) /*if backward motion detected [-inf;-100]*/
+  else if ( motor_speed < SPEED_THRESHOLD_NEG) /*if backward motion detected [-inf;-100]*/
   {
     motor_direction = MOTOR_DIR_BACKWARD;			// set backward read
   }
-  else if (motor_speed <= 100 || motor_speed >= MAX_THRESHOLD) /*if motion detected below threshold [-100;100]*/
+  else if (motor_speed <= SPEED_THRESHOLD_POS && motor_speed >= SPEED_THRESHOLD_NEG) /*if motion detected below threshold [-100;100]*/
   {
     motor_direction = MOTOR_DIR_STOPPED;			// set stopped read
   }
@@ -7480,27 +7497,29 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
     writesdo(0x2910,0x06,0);
     writesdo(0x3814,0x14,0x7fff);	// disable stuck pedal check
   }
-  
-  if (!control_remote_on && config_on)	// disable remote agent
-  {
-      reset_twizy_remote();
-  }
-  
+
   if (config_speedlimit_en)
   {
     write_max_speed(config_speedlimit);
   }
-  else 
+  else
   {
     reset_max_speed();
   }
+
+  if (!control_remote_on && config_on)	// disable remote agent
+  {
+      reset_twizy_remote();
+  }
+ 
 
   if (msgmode)
   {
     s = stp_i(net_scratchpad, "MP-0 c", cmd ? cmd : CMD_Control);
     s = stp_i(s, ",", state_braking);
     s = stp_i(s, ",", car_speed);
-    s = stp_i(s, ",", (motor_speed < MID_THRESHOLD ? motor_speed : -1*(INT) (1 + ~motor_speed)));
+    //s = stp_i(s, ",", (motor_speed < MID_THRESHOLD ? motor_speed : -1*(INT) (1 + ~motor_speed)));
+    s = stp_i(s, ",", motor_speed);
     s = stp_i(s, ",", car_SOC);
     s = stp_i(s, ",", config_on);
     s = stp_i(s, ",", seq_number);
@@ -7972,6 +7991,7 @@ BOOL vehicle_twizy_initialise(void)
     
     MAX_THRESHOLD = 0xFFFFFF9C; // -100
     MID_THRESHOLD = 0x80000000; // negative minimum (OR positive maximum +1)
+
 #endif // TWIZY_REMOTE
 
   }
@@ -8109,6 +8129,10 @@ BOOL vehicle_twizy_initialise(void)
   net_fnbits |= NET_FN_INTERNALGPS; // Require internal GPS
   net_fnbits |= NET_FN_12VMONITOR;    // Require 12v monitor
   net_fnbits |= NET_FN_SOCMONITOR;    // Require SOC monitor
+
+#ifdef TWIZY_REMOTE
+  reset_twizy_remote();
+#endif
 
   return TRUE;
 }

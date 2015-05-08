@@ -227,6 +227,7 @@ void main(void)
   delay100(10); // Delay 1 second
   ClrWdt(); // Clear Watchdog Timer
 
+
   // Setup ready for the main loop
   led_set(OVMS_LED_GRN, OVMS_LED_OFF);
   led_start();

@@ -117,9 +117,17 @@ void net_msg_start(void)
   else
     {
     net_msg_sendpending = 1;
+#ifdef TWIZY_REMOTE
+    delay100(4);
+#else
     delay100(5);
+#endif
     net_puts_rom("AT+CIPSEND\r");
+#ifdef TWIZY_REMOTE
+    delay100(2);
+#else
     delay100(10);
+#endif
     }
   }
 
@@ -729,7 +737,9 @@ BOOL net_msg_cmd_exec(void)
   int k;
   char *p, *s;
 
+#ifndef TWIZY_REMOTE
   delay100(2);
+#endif
 
   CHECKPOINT(0x43)
 
@@ -877,7 +887,10 @@ BOOL net_msg_cmd_exec(void)
 void net_msg_cmd_do(void)
   {
   CHECKPOINT(0x44)
+
+#ifndef TWIZY_REMOTE
   delay100(2);
+#endif
 
   // commands 40-49 are special AT commands, thus, disable net_msg here
   if ((net_msg_cmd_code < 40) || (net_msg_cmd_code > 49))

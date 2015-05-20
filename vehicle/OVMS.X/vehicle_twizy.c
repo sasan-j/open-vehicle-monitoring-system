@@ -7150,29 +7150,12 @@ UINT vehicle_twizy_control_agent(void)
   }
 
   //-----------------
-  // RECYCLING
-  //-----------------
-  
-  if (control_throttle1 == 0 && control_throttle2 == 0 /*no brake AND no throttle*/)
-  {
-    state_recycled = 1;		// set recycled flag to TRUE
-  }
-  
-  /*is braking AND throttle is pushed*/
-  if (state_braking != BRAKE_STATE_NO && (control_throttle1 != 0 || control_throttle2 != 0) )
-  { 
-    state_recycled = 0;		// set recycled flag to FALSE
-  }
- 
-  //-----------------
   // TIMEOUT
   //-----------------
 
   //TODO: Do something like resetting all the manipulation so car easily can be controller by the driver
   if (control_elapsed_time >= config_timeout /*no update received for T seconds AND not doing emergency braking*/)
   {
-
-    state_braking = (config_braking_mode==BRAKE_MODE_NATURAL) ? BRAKE_STATE_NORMAL : BRAKE_STATE_EMERGENCY;// enable configured braking mode
     reset_twizy_remote();
   }
   else
@@ -7208,60 +7191,18 @@ UINT vehicle_twizy_control_agent(void)
     vehicle_twizy_spooky_agent();
     return 0; 					// skip the rest of the agent function
   }
-
-  //-----------------
-  // VALIDATE BRAKING
-  //-----------------
-  
-  if (motor_direction == MOTOR_DIR_STOPPED && state_braking != BRAKE_STATE_NO)			/*if stopped read*/
-  {
-    state_gear = GEAR_STATE_NEUTRAL;				// set neutral gear
-    state_braking = BRAKE_STATE_NO;				// disable emergency braking
-  }
   
   //-----------------
   // THROTTLE CONTROL
   //-----------------
-  
-  if (state_braking == BRAKE_STATE_EMERGENCY) /*if emergency braking enabled*/
-  {
-        // throttle input (2910.4/6) : 0-32767 = 320 * X (0-100)
-        if (motor_direction == MOTOR_DIR_FORWARD)			/*if forward read*/
-        {
-          // apply default (~100 %) or specified negative torque
-          write_throttle(FORCED_BRAKE_THROTTLE);
-          write_gear(GEAR_STATE_REVERSE);				// set reverse gear switch
-        }
-        else if (motor_direction == MOTOR_DIR_BACKWARD)		/*if backward read*/
-        {
-          // apply default or specified positive torque
-          write_throttle(FORCED_BRAKE_THROTTLE);
-          write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
-        }
-  } else if(state_braking == BRAKE_STATE_NORMAL){/* if natural braking enabled*/
-          // throttle input (2910.4/6) : 0-32767 = 320 * X (0-100)
-        if (motor_direction == MOTOR_DIR_FORWARD)			/*if forward read*/
-        {
-          // apply default (~100 %) or specified negative torque
-          write_throttle(0);
-          //write_gear(GEAR_STATE_REVERSE);				// set reverse gear switch
-        }
-        else if (motor_direction == MOTOR_DIR_BACKWARD)		/*if backward read*/
-        {
-          // apply default or specified positive torque
-          write_throttle(0);
-          //write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
-        }
-  }
-  else // if we are not braking
-  {
-    if (state_gear == GEAR_STATE_FORWARD && state_recycled)	/*if forward gear AND recycled flag*/
+  if(motor_speed <= 100 && motor_speed >= -100){
+    if (state_gear == GEAR_STATE_FORWARD)	/*if forward gear AND recycled flag*/
     {
       // apply forward specified torque
       write_throttle(control_throttle1);                        // set constant X (%) throttle input
       write_gear(GEAR_STATE_FORWARD);				// set forward gear switch
     }
-    else if (state_gear == GEAR_STATE_REVERSE && state_recycled)/*if reverse gear AND recycled flag*/
+    else if (state_gear == GEAR_STATE_REVERSE)/*if reverse gear AND recycled flag*/
     {
       // apply reverse specified torque
       write_throttle(control_throttle2);                        // set constant X (%) throttle input
@@ -7274,6 +7215,7 @@ UINT vehicle_twizy_control_agent(void)
       write_gear(GEAR_STATE_NEUTRAL);				// reset both gear switch
     }
   }
+
   return 0;
 }
 

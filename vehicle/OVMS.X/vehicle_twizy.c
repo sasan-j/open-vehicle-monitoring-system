@@ -276,7 +276,7 @@
 
 #ifdef TWIZY_REMOTE
 
-#define REMOTE_AGENT_10TH       1  // Agent runs every REMOTE_AGENT_10T * 1/10 of second
+#define REMOTE_AGENT_10TH       2  // Agent runs every REMOTE_AGENT_10T * 1/10 of second
 
 // Custom commands:
 #define CMD_Control		106 // (direction,speed,brake,..)

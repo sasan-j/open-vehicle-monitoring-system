@@ -130,6 +130,7 @@ void low_isr(void)
   // call of library module function, MUST
   UARTIntISR();
   led_isr();
+ // twizy_spooky_isr();
   }
 #pragma tmpdata
 

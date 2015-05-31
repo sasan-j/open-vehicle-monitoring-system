@@ -280,6 +280,7 @@ void main(void)
       CHECKPOINT(0x28)
       acc_ticker();
 #endif
+//    } else if(){
     }
     else if (TMR0H != y)
     {

@@ -118,13 +118,13 @@ void net_msg_start(void)
     {
     net_msg_sendpending = 1;
 #ifdef TWIZY_REMOTE
-    delay100(4);
+    delay100(5);
 #else
     delay100(5);
 #endif
     net_puts_rom("AT+CIPSEND\r");
 #ifdef TWIZY_REMOTE
-    delay100(2);
+    delay100(10);
 #else
     delay100(10);
 #endif

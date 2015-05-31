@@ -276,7 +276,7 @@
 
 #ifdef TWIZY_REMOTE
 
-#define REMOTE_AGENT_10TH       2  // Agent runs every REMOTE_AGENT_10T * 1/10 of second
+#define REMOTE_AGENT_10TH       1  // Agent runs every REMOTE_AGENT_10T * 1/10 of second
 
 // Custom commands:
 #define CMD_Control		106 // (direction,speed,brake,..)
@@ -287,9 +287,9 @@
 
 
 //Some readable constants
-#define SPOOKY_THROTTLE             15
+#define SPOOKY_THROTTLE             12
 #define FORCED_BRAKE_THROTTLE       10
-#define SPOOKY_INTERVAL             20  //means spooky stops, then moves forward or backward for
+#define SPOOKY_INTERVAL             15  //means spooky stops, then moves forward or backward for
                                        //8 * REMOTE_AGENT_10TH * 1/10 of second e.g. 1.0
 
 
@@ -540,6 +540,7 @@ UINT8 control_brake_en;		// 1:enable = Emergency braking until car is still
 //UINT8 control_brake_rst;	// 1:reset = Disable emergency braking
 UINT8 control_remote_on;	// control agent status
 UINT8 control_elapsed_time;
+BOOL control_pending;           // if there is something to be applied has values of 1 else 0
 
 UINT8 config_braking_mode;	// 0:auto 1:manual = Autobrake after inactivity period
 UINT8 config_speedlimit;	// Maximum authorized speed
@@ -5092,14 +5093,19 @@ BOOL vehicle_twizy_state_ticker10th(void)
 #ifdef TWIZY_REMOTE
   // Call the control agent once every 3 periods of ~1/10th of a second
   // Approximately 300 ms
+  
   tick_divider = (tick_divider+1)%REMOTE_AGENT_10TH;
 
   if (tick_divider == 0)
   {
     vehicle_twizy_control_agent();
   }
+  ClrWdt();
+  
 
 #endif // TWIZY_REMOTE
+
+
 
   return FALSE;
 }
@@ -7102,6 +7108,7 @@ void write_throttle(UINT throttle_factor)
     writesdo(0x2910,0x04,prev_throttle * 320);	// start throttle value
     writesdo(0x2910,0x06,prev_throttle * 320);	// end throttle value
 
+
     prev_throttle = throttle_factor;
   }
 }
@@ -7130,10 +7137,17 @@ void reset_max_speed()
 // Control the autonomous behavious of the vehicle
 UINT vehicle_twizy_control_agent(void)
 {
+
+  if (!(twizy_status & CAN_STATUS_GO) || !config_on)	// only proceed if car is in GO mode and remote is activated
+  {
+    return 0;
+  }
+
   //-----------------
   // ON / OFF SWITCH
   //-----------------
-  
+
+
   if ((twizy_status & CAN_STATUS_GO) && readsdo(0x2020,0x04) == 0) /*Motor RPM read from SEVCON*/
   {
     motor_speed = twizy_sdo.data;
@@ -7142,7 +7156,7 @@ UINT vehicle_twizy_control_agent(void)
 
   // if driver has pressed footbrake set throttle to 0
   // This acts as a safety measure to stop the car from forcing itself into a wall while user tells it to stop!
-  /* DOESN'T WORK YET */
+  /* DOESN'T WORK YET 
   if (config_on && (twizy_status & CAN_STATUS_GO) && readsdo(0x2130,0x00) == 0)	// if driver has pressed footbrake set throttle to 0
   {
     //write_throttle(0);
@@ -7152,14 +7166,9 @@ UINT vehicle_twizy_control_agent(void)
         return 0;
     }
   }
+  */
 
-  
-
-
-  if (!(twizy_status & CAN_STATUS_GO) || !config_on)	// only proceed if car is in GO mode and remote is activated
-  {
-    return 0;
-  }
+ 
 
   //-----------------
   // TIMEOUT
@@ -7197,17 +7206,18 @@ UINT vehicle_twizy_control_agent(void)
   //-----------------
   // SPOOOOOKY AGENT
   //-----------------
-  
   if (config_scenario == SCENARIO_SPOOKY)
   {
     vehicle_twizy_spooky_agent();
     return 0; 					// skip the rest of the agent function
   }
+
   
+
   //-----------------
   // THROTTLE CONTROL
   //-----------------
-  if((motor_speed <= 100 && motor_speed >= -100) && config_on){
+  if((motor_speed <= 100 && motor_speed >= -100) && config_on && control_pending){
     if (state_gear == GEAR_STATE_FORWARD)	/*if forward gear AND recycled flag*/
     {
       // apply forward specified torque
@@ -7226,6 +7236,7 @@ UINT vehicle_twizy_control_agent(void)
       write_throttle(0);                                        // set constant 0 throttle input
       write_gear(GEAR_STATE_NEUTRAL);				// reset both gear switch
     }
+    control_pending = FALSE;
   }
 
   return 0;
@@ -7235,12 +7246,13 @@ UINT vehicle_twizy_control_agent(void)
 void vehicle_twizy_spooky_agent(void)
 {
   //Spooky non reliable time measurement
-  spooky_duration = ++spooky_duration % control_duration;
+  spooky_duration = (spooky_duration+REMOTE_AGENT_10TH) % control_duration;
   if(spooky_duration == 0){
       if(spooky_is_moving){
         //Stop
           write_throttle(0);
           spooky_is_moving = FALSE;
+          return;
       }
   }
 
@@ -7279,6 +7291,7 @@ void vehicle_twizy_spooky_agent(void)
 // Parsing and use of message from app, ack
 BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
 {
+
   char *s;
   //INT8 seq_number = 0;
   INT8 new_scenario = SCENARIO_NONE;
@@ -7286,7 +7299,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   UINT8 first_param;
   UINT8 second_param;
   UINT8 third_param;
-
+  
   //-----------------
   // PARSING OF CMD
   //-----------------
@@ -7313,7 +7326,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
       third_param = atoi(arguments);
 
     config_timeout = 0;
-
+    control_pending = FALSE;
     switch(sub_command){
         case SUB_CMD_FORWARD:
             config_speedlimit = first_param;
@@ -7323,6 +7336,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             state_gear = GEAR_STATE_FORWARD;
             control_remote_on = REMOTE_CONTROL_ENABLE;
             config_timeout = third_param;
+            control_pending = TRUE;
             break;
         case SUB_CMD_REVERSE:
             config_speedlimit = first_param;
@@ -7332,6 +7346,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             state_gear = GEAR_STATE_REVERSE;
             control_remote_on = REMOTE_CONTROL_ENABLE;
             config_timeout = third_param;
+            control_pending = TRUE;
             break;
         case SUB_CMD_SPEED_LIMIT:
             config_speedlimit_en = first_param;
@@ -7365,7 +7380,6 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             break;
         case SUB_CMD_RESET:
             reset_twizy_remote();
-            return TRUE;
             break;
         default:
             break;
@@ -7378,7 +7392,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   // APPLY SCENARIO
   //-----------------
   
-  if (new_scenario != config_scenario)
+  if (new_scenario != config_scenario && sub_command != SUB_CMD_GET_STATE)
   {
     config_scenario = new_scenario;
     
@@ -7434,7 +7448,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   // ON/OFF CHANGE
   //-----------------
   
-  if (control_remote_on && !config_on)	// enable remote agent
+  if (control_remote_on && !config_on && (sub_command != SUB_CMD_GET_STATE))	// enable remote agent
   {
     config_on = 1;
     writesdo(0x2910,0x04,0);		// no throttle conversion
@@ -7451,7 +7465,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
     reset_max_speed();
   }
 
-  if (!control_remote_on && config_on)	// disable remote agent
+  if (!control_remote_on && config_on && (sub_command != SUB_CMD_GET_STATE))	// disable remote agent
   {
       reset_twizy_remote();
   }
@@ -7459,22 +7473,18 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
     if (msgmode)
       {
         s = stp_i(net_scratchpad, "MP-0 c", cmd ? cmd : CMD_Control);
-        s = stp_i(s, ",", state_braking);
+        s = stp_i(s, ",", sub_command);
+        //s = stp_i(s, ",", state_braking);
         s = stp_i(s, ",", car_speed);
         //s = stp_i(s, ",", (motor_speed < MID_THRESHOLD ? motor_speed : -1*(INT) (1 + ~motor_speed)));
         s = stp_i(s, ",", motor_speed);
         s = stp_i(s, ",", car_SOC);
-        s = stp_i(s, ",", config_on);
-        s = stp_i(s, ",", sub_command);
-        s = stp_i(s, ",", first_param);
-        s = stp_i(s, ",", second_param);
-        s = stp_i(s, ",", third_param);
+        //s = stp_i(s, ",", config_on);
         //s = stp_i(s, ",", seq_number);
         //s = stp_rom(s, ",ControlOK");
         net_msg_encode_puts();
         net_msg_send();
       }
-
   return TRUE;
 }
 
@@ -7502,6 +7512,9 @@ void reset_twizy_remote(){
     prev_max_speed = 255;
     prev_gear = 3;
     config_scenario = SCENARIO_NONE;
+    //reset speed limit values
+    config_speedlimit_en = 0;
+    config_speedlimit = 0;
 }
 
 BOOL vehicle_twizy_config_cmd(BOOL msgmode, int cmd, char *arguments)
@@ -7803,6 +7816,9 @@ BOOL vehicle_twizy_help_sms(BOOL premsg, char *caller, char *command, char *argu
 // gives the CAN framework an opportunity to initialise itself.
 //
 
+
+void twizy_interrupt_initialise(void);
+
 BOOL vehicle_twizy_initialise(void)
 {
   // car_type[] is uninitialised => distinct init from crash/reset:
@@ -7913,6 +7929,7 @@ BOOL vehicle_twizy_initialise(void)
     control_brake_en = 0;	// 1:enable = Emergency braking until car is still
     control_remote_on = 0;	// control agent status
     control_elapsed_time = 0;
+    control_pending = 0;
     // 0 natural 1 forced
     config_braking_mode = BRAKE_MODE_NATURAL;	// 0:natural 1:forced
     config_speedlimit = 0;	// Maximum authorized speed
@@ -7941,6 +7958,8 @@ BOOL vehicle_twizy_initialise(void)
     
     MAX_THRESHOLD = 0xFFFFFF9C; // -100
     MID_THRESHOLD = 0x80000000; // negative minimum (OR positive maximum +1)
+
+   //twizy_interrupt_initialise();
 
 #endif // TWIZY_REMOTE
 
@@ -8082,7 +8101,35 @@ BOOL vehicle_twizy_initialise(void)
 
 #ifdef TWIZY_REMOTE
   reset_twizy_remote();
+  vehicle_twizy_cfg_recup(25,-1,-1);
 #endif
 
   return TRUE;
 }
+
+
+// Initialise the LED system
+void twizy_interrupt_initialise(void)
+  {
+  // Timer 1 enabled, Fosc/4, 16 bit mode, prescaler 1:8
+  T3CON = 0b10110001; // @ 5Mhz => 51.2uS / 256
+  IPR2bits.TMR3IP = 0; // Low priority interrupt
+  PIE2bits.TMR3IE = 1; // Enable interrupt
+  TMR3L = 0xDC; //3036
+  TMR3H = 0x0B;
+  }
+
+
+// ISR optimization, see http://www.xargs.com/pic/c18-isr-optim.pdf
+#pragma tmpdata low_isr_tmpdata
+
+void twizy_spooky_isr(void)
+{
+    if(PIR2bits.TMR3IF & PIE2bits.TMR3IE)
+    {
+    vehicle_twizy_control_agent();
+    PIR2bits.TMR3IF = 0;
+    }
+}
+
+#pragma tmpdata

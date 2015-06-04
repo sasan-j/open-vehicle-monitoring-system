@@ -549,6 +549,8 @@ UINT8 config_on;		// 1:agent enabled 2:agent disabled
 UINT8 config_timeout;
 UINT8 config_scenario;		// 0: default 1: spooky
 
+UINT8 config_throttle_disable;      //0 disable, 1 enable (enable means no throttle)
+
 UINT8 state_braking;		// 0:no 1:normal 2:emergency
 UINT8 state_gear;		// 0:neutral 1:forward 2:reverse
 UINT8 state_recycled;		// 0:no 1:yes
@@ -7299,6 +7301,8 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   UINT8 first_param;
   UINT8 second_param;
   UINT8 third_param;
+
+  INT8 control_throttle_disable = -1;
   
   //-----------------
   // PARSING OF CMD
@@ -7337,6 +7341,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             control_remote_on = REMOTE_CONTROL_ENABLE;
             config_timeout = third_param;
             control_pending = TRUE;
+            control_throttle_disable = 0;
             break;
         case SUB_CMD_REVERSE:
             config_speedlimit = first_param;
@@ -7347,6 +7352,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             control_remote_on = REMOTE_CONTROL_ENABLE;
             config_timeout = third_param;
             control_pending = TRUE;
+            control_throttle_disable = 0;
             break;
         case SUB_CMD_SPEED_LIMIT:
             config_speedlimit_en = first_param;
@@ -7355,6 +7361,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             break;
         case SUB_CMD_SPOOKY:
             if(first_param==REMOTE_CONTROL_ENABLE){
+                control_throttle_disable = 0;
                 control_remote_on = REMOTE_CONTROL_ENABLE;
                 new_scenario = SCENARIO_SPOOKY;
                 if(second_param>=SPOOKY_INTERVAL)
@@ -7368,11 +7375,13 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
             break;
         case SUB_CMD_NO_THROTTLE:
             if(first_param==1){
+                control_throttle_disable = 1;
                 //config_on = 1;
                 writesdo(0x2910,0x04,0);		// no throttle conversion
                 writesdo(0x2910,0x06,0);
                 //writesdo(0x3814,0x14,0x7fff);	// disable stuck pedal check
             } else {
+                control_throttle_disable = 0;
                 writesdo(0x2910,0x04,0x8001);	// normal start value for throttle conversion
                 writesdo(0x2910,0x06,0x7fff);	// normal end value for throttle conversion
                 //writesdo(0x3814,0x14,6534);		// re-enable stuck pedal check
@@ -7417,7 +7426,9 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
 	break;
     }
   }
-      
+
+
+
   
   //-----------------
   // RESET TIMER
@@ -7451,7 +7462,7 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   if (control_remote_on && !config_on && (sub_command != SUB_CMD_GET_STATE))	// enable remote agent
   {
     config_on = 1;
-    writesdo(0x2910,0x04,0);		// no throttle conversion
+    writesdo(0x2910,0x04,0);		// no throttle conve  rsion
     writesdo(0x2910,0x06,0);
     writesdo(0x3814,0x14,0x7fff);	// disable stuck pedal check
   }
@@ -7463,6 +7474,10 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
   else
   {
     reset_max_speed();
+  }
+
+  if((control_throttle_disable != -1) && (control_throttle_disable != config_throttle_disable)){
+      config_throttle_disable = control_throttle_disable;
   }
 
   if (!control_remote_on && config_on && (sub_command != SUB_CMD_GET_STATE))	// disable remote agent
@@ -7479,6 +7494,9 @@ BOOL vehicle_twizy_control_cmd(BOOL msgmode, int cmd, char *arguments)
         //s = stp_i(s, ",", (motor_speed < MID_THRESHOLD ? motor_speed : -1*(INT) (1 + ~motor_speed)));
         s = stp_i(s, ",", motor_speed);
         s = stp_i(s, ",", car_SOC);
+        s = stp_i(s, ",", config_scenario);
+        s = stp_i(s, ",", config_speedlimit_en);
+        s = stp_i(s, ",", config_throttle_disable);
         //s = stp_i(s, ",", config_on);
         //s = stp_i(s, ",", seq_number);
         //s = stp_rom(s, ",ControlOK");
@@ -7515,6 +7533,7 @@ void reset_twizy_remote(){
     //reset speed limit values
     config_speedlimit_en = 0;
     config_speedlimit = 0;
+    config_throttle_disable = 0;
 }
 
 BOOL vehicle_twizy_config_cmd(BOOL msgmode, int cmd, char *arguments)
@@ -7937,6 +7956,7 @@ BOOL vehicle_twizy_initialise(void)
     config_on = 0;		// 1:agent enabled 2:agent disabled
     config_timeout = 50;	// 50 * 100 ms = 5s
     config_scenario = SCENARIO_NONE;
+    config_throttle_disable = 0;
 
     // No brake 0, Natural brake 1, Forced brake 2
     state_braking = BRAKE_STATE_NO;		// 0:no 1:normal 2:emergency
